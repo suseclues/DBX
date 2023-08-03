@@ -1,0 +1,205 @@
+import pathlib
+import pandas as pd
+import dropbox
+import zipfile
+import requests
+import os
+import io
+from dropbox.exceptions import AuthError
+
+DROPBOX_ACCESS_TOKEN = "sl.BjZOrbZZ46ckwRQbk8wrAuQR1ea9TVsfu_JR0kBGhGggcBusLBu8RheYgplXTedlsA--AHXQW7Ax8AbhOKQ_HB2XVtNdH784R4JETbDwrUUri3zGMyxoY06Ji1OtcKANYoVQsFGiXJl9-tTaKPZeskU"
+
+# Create Access Token variable
+dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+
+def dropbox_connect():
+    """Create a connection to Dropbox."""
+
+    try:
+        dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+    except AuthError as e:
+        print('Error connecting to Dropbox with access token: ' + str(e))
+    return dbx
+
+def dropbox_list_files(path):
+    """Return a Pandas dataframe of files in a given Dropbox folder path in the Apps directory.
+    """
+
+    dbx = dropbox_connect()
+
+    try:
+        files = dbx.files_list_folder(path).entries
+        files_list = []
+        for file in files:
+            if isinstance(file, dropbox.files.FileMetadata):
+                metadata = {
+                    'name': file.name,
+                    'path_display': file.path_display,
+                    'client_modified': file.client_modified,
+                    'server_modified': file.server_modified
+                }
+                files_list.append(metadata)
+
+        df = pd.DataFrame.from_records(files_list)
+        return df.sort_values(by='server_modified', ascending=False)
+
+    except Exception as e:
+        print('Error getting list of files from Dropbox: ' + str(e))
+
+def dropbox_list_folders(dbx, path):
+    try:
+        result = dbx.files_list_folder(path)
+
+        folders = []
+
+        for entry in result.entries:
+            if isinstance(entry, dropbox.files.FolderMetadata):
+                folders.append(entry.path_display)
+        return folders
+    except dropbox.exceptions.ApiError as err:
+        print('Folder listing failed: ', err)
+        return None
+
+def dropbox_download_file(dropbox_file_path, local_file_path):
+    """Download a file from Dropbox to the local machine."""
+
+    try:
+        dbx = dropbox_connect()
+
+        with open(local_file_path, 'wb') as f:
+            metadata, result = dbx.files_download(path=dropbox_file_path)
+            f.write(result.content)
+    except Exception as e:
+        print('Error downloading file from Dropbox: ' + str(e))
+
+def dropbox_download_folder(dbx, folders):
+    """Download folders as individual zipped folders"""
+
+
+    for folder in folders:
+        try:
+            # Create a zip for the folder
+            zip_info = dbx.files_export_zip(folder)
+            zip_url = zip_info.url
+
+            # Use the url to download the file
+            res = requests.get(zip_url)
+            res.raise_for_status()
+
+            # write out contents to local zip file
+            with open(f'{os.path.basename(folder)}.zip', 'wb') as f:
+                for chunk in res.iter_content(1024):
+                    if chunk:
+                        f.write(chunk)
+
+            print(f"Downloaded {os.path.basename(folder)}.zip")
+
+        except (dropbox.exceptions.ApiError, requests.exceptions.RequestException) as err:
+            print(f"Failed to download {folder}: ", err)
+
+def dropbox_upload_file(local_path, local_file, dropbox_file_path):
+    """Upload a file from the local machine to a path in the Dropbox app directory.
+
+    Args:
+        local_path (str): The path to the local file.
+        local_file (str): The name of the local file.
+        dropbox_file_path (str): The path to the file in the Dropbox app directory.
+
+    Example:
+        dropbox_upload_file('.', 'test.csv', '/stuff/test.csv')
+
+    Returns:
+        meta: The Dropbox file metadata.
+    """
+
+    try:
+        dbx = dropbox_connect()
+
+        local_file_path = pathlib.Path(local_path) / local_file
+
+        with local_file_path.open("rb") as f:
+            meta = dbx.files_upload(f.read(), dropbox_file_path, mode=dropbox.files.WriteMode("overwrite"))
+
+            return meta
+    except Exception as e:
+        print('Error uploading file to Dropbox: ' + str(e))
+
+def dropbox_get_link(dropbox_file_path):
+    """Get a shared link for a Dropbox file path.
+
+    Args:
+        dropbox_file_path (str): The path to the file in the Dropbox app directory.
+
+    Returns:
+        link: The shared link.
+    """
+
+    try:
+        dbx = dropbox_connect()
+        shared_link_metadata = dbx.sharing_create_shared_link_with_settings(dropbox_file_path)
+        shared_link = shared_link_metadata.url
+        return shared_link.replace('?dl=0', '?dl=1')
+    except dropbox.exceptions.ApiError as exception:
+        if exception.error.is_shared_link_already_exists():
+            shared_link_metadata = dbx.sharing_get_shared_links(dropbox_file_path)
+            shared_link = shared_link_metadata.links[0].url
+            return shared_link.replace('?dl=0', '?dl=1')
+
+def download_folder(dbx, folder_path, local_path):
+    # List all files in the folder
+    result = dbx.files_list_folder(folder_path)
+
+    for file in result.entries:
+        # Check if the entry is a file
+        if isinstance(file, dropbox.files.FileMetadata):
+            download_file(dbx, file.path_lower, local_path)
+
+def download_file(dbx, file_path, local_path):
+    metadata, res = dbx.files_download(file_path)
+    file_name = os.path.join(local_path, metadata.name)
+    with open(file_name, 'wb') as f:
+        f.write(res.content)
+
+def download_folders_as_zip(dbx, folders):
+    for folder in folders:
+        try:
+            # Create a local directory with the same name as the folder
+            local_dir = os.path.join('./', os.path.basename(folder))
+            os.makedirs(local_dir, exist_ok=True)
+
+            # Download all files in the folder
+            download_folder(dbx, folder, local_dir)
+
+            # Compress the local directory to a zip file
+            with zipfile.ZipFile(f'{os.path.basename(folder)}.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(local_dir):
+                    for file in files:
+                        zipf.write(os.path.join(root, file), arcname=os.path.relpath(os.path.join(root, file), start=local_dir))
+
+            print(f"Downloaded {os.path.basename(folder)}.zip")
+
+        except (dropbox.exceptions.ApiError, requests.exceptions.RequestException) as err:
+            print(f"Failed to download {folder}: ", err)
+
+def main():
+
+    # Establish dropbox connection
+    dropbox_connect()
+
+    # Create Access Token variable
+    dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+
+    # Create a list of the folders you want to download
+    # if you want to have it list every folder in your Dropbox, use '' instead of '/FolderName'
+
+    folders = dropbox_list_folders(dbx, '/Susie')
+
+    # Download the folders as individual zip files
+
+    download_folders_as_zip(dbx, folders)
+
+
+if __name__ == '__main__':
+    main()
+
+
