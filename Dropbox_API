@@ -7,7 +7,7 @@ import os
 import io
 from dropbox.exceptions import AuthError
 
-DROPBOX_ACCESS_TOKEN = "sl.BjZOrbZZ46ckwRQbk8wrAuQR1ea9TVsfu_JR0kBGhGggcBusLBu8RheYgplXTedlsA--AHXQW7Ax8AbhOKQ_HB2XVtNdH784R4JETbDwrUUri3zGMyxoY06Ji1OtcKANYoVQsFGiXJl9-tTaKPZeskU"
+DROPBOX_ACCESS_TOKEN = "..."
 
 # Create Access Token variable
 dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
@@ -192,7 +192,7 @@ def main():
     # Create a list of the folders you want to download
     # if you want to have it list every folder in your Dropbox, use '' instead of '/FolderName'
 
-    folders = dropbox_list_folders(dbx, '/Susie')
+    folders = dropbox_list_folders(dbx, '/FolderName')
 
     # Download the folders as individual zip files
 
