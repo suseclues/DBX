@@ -195,14 +195,14 @@ def main():
     # Establish dropbox connection
     dropbox_connect()
 
-    # Create Access Token variable
+    ### Create Access Token variable
     dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
-    # Create a list of the folders you want to download
-    # if you want to have it list every folder in your Dropbox, use '' instead of '/FolderName'
+    ### Create a list of the folders you want to download
+    ### if you want to have it list every folder in your Dropbox, use '' instead of '/FolderName'
     folders = dropbox_list_folders(dbx, '/FolderName')
 
-    # Download the folders as individual zip files to the directory you want
+    ### Download the folders as individual zip files to the directory you want
     download_folders_zipped(dbx, folders, "/Users/YourName/Desktop/Folder")
 
 
