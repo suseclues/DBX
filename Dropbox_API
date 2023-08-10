@@ -200,7 +200,7 @@ def main():
 
     ### Create a list of the folders you want to download
     ### if you want to have it list every folder in your Dropbox, use '' instead of '/FolderName'
-    folders = dropbox_list_folders(dbx, '/FolderName')
+    folders = dropbox_list_folders(dbx, '/Folder')
 
     ### Download the folders as individual zip files to the directory you want
     download_folders_zipped(dbx, folders, "/Users/YourName/Desktop/Folder")
